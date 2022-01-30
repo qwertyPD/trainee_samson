@@ -96,4 +96,95 @@ function importXml($a) {
     mysqli_close($conn);
 }
 
+/* Реализовать функцию exportXml($a, $b). $a – путь к xml файлу вида (структура файла приведена ниже), $b – код рубрики.
+Результат ее выполнения: выбрать из БД товары (и их характеристики, необходимые для формирования файла)
+входящие в рубрику $b или в любую из всех вложенных в нее рубрик, сохранить результат в файл $a. */
+
+function exportXml($a, $b) {
+
+    $conn = mysqli_connect("localhost", "root", "", "test_samson");
+    if ($conn->connect_error) {
+        die ("Ошибка подключения " . $conn->connect_error);
+    }
+
+    $stmt = $conn->prepare("SELECT a_product.code, a_product.name
+                            FROM a_product 
+                            JOIN a_category ON a_product.id = a_category.id
+                            WHERE a_category.name = ?");    // Выбираю товары по названию рубрики
+    $stmt->bind_param('s', $b);
+    $stmt->execute();
+
+    $dom = new domDocument("1.0", "utf-8");
+    $products = $dom->appendChild($dom->createElement('Товары'));
+
+    while ($result = $stmt->get_result()) {
+        foreach ($result as $item) {
+
+            // Создание тегов "Товар"
+            $product = $products->appendChild($dom->createElement('Товар'));
+            $product->setAttribute('Код', $item['code']);
+            $product->setAttribute('Название', $item['name']);
+
+            // Получение Цен
+            $stmt = $conn->prepare("SELECT a_price.price_type, a_price.price
+                           FROM a_price WHERE a_price.product = ?");
+            $stmt->bind_param('s', $item['name']);
+            $stmt->execute();
+
+            // Создание тегов "Цена"
+            while ($values = $stmt->get_result()) {
+                foreach ($values as $value) {
+                    $price = $dom->createElement('Цена', $value['price']);
+                    $price->setAttribute('Тип', $value['price_type']);
+                    $product->appendChild($price);
+                }
+            }
+
+            // Получение свойств
+            $stmt = $conn->prepare("SELECT a_property.property
+                                    FROM a_property WHERE a_property.product = ?");
+            $stmt->bind_param('s', $item['name']);
+            $stmt->execute();
+            $properties = $product->appendChild($dom->createElement('Свойства'));
+
+            // Создание тегов "Свойства"
+            while ($values = $stmt->get_result()) {
+                foreach ($values as $value) {
+                    $propertyName = stristr($value['property'], ' ', true); // Разделяю свойство на его название
+                    $propertyValue = stristr($value['property'], ' ');      // и значение
+                    $propertyValue = trim($propertyValue, ' ');
+                    if (mb_substr($propertyValue, -1) === '%') {            // Проверяет наличие единицы измерения в конце строки
+                        $property = $dom->createElement($propertyName, substr($propertyValue, 0, -1));
+                        $property->setAttribute('ЕдИзм', mb_substr($propertyValue, -1));
+                    } else {
+                        $property = $dom->createElement($propertyName, $propertyValue);
+                    }
+                    $properties->appendChild($property);
+                }
+            }
+            // Получение категорий
+            $stmt = $conn->prepare("SELECT a_category.name
+                                  FROM a_category
+                                  JOIN a_product ON a_product.id = a_category.id
+                                  WHERE a_product.name = ?");
+            $stmt->bind_param('s', $item['name']);
+            $stmt->execute();
+            $categories = $product->appendChild(($dom->createElement('Разделы')));
+
+            // Создание тегов "Категории"
+            while ($values = $stmt->get_result()) {
+                foreach ($values as $value) {
+                    $category = $dom->createElement('Раздел', $value['name']);
+                    $categories->appendChild($category);
+                }
+            }
+        }
+    }
+
+    $dom->save($a);
+    $conn->close();
+}
+
+exportXml('export.xml', 'Бумага');
+
 ?>
