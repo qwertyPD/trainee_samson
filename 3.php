@@ -1,5 +1,6 @@
 <?php
 namespace Test3;
+use Exception; //       необходимо подключить класс Exeption
 
 class newBase
 {
@@ -8,7 +9,8 @@ class newBase
     /**
      * @param string $name
      */
-    function __construct(int $name = 0)
+    // function __construct(int $name = 0)      $name должно иметь тип string
+    function __construct(string $name)
     {
         if (empty($name)) {
             while (array_search(self::$count, self::$arSetName) != false) {
@@ -19,7 +21,8 @@ class newBase
         $this->name = $name;
         self::$arSetName[] = $this->name;
     }
-    private $name;
+    // private $name;       $name используется в дочернем классе
+    protected $name;
     /**
      * @return string
      */
@@ -52,8 +55,9 @@ class newBase
      */
     public function getSave(): string
     {
-        $value = serialize($value);
-        return $this->name . ':' . sizeof($value) . ':' . $value;
+        $value = serialize($this->value);
+        // return $this->name . ':' . sizeof($this->value) . ':' . $value;      sizeof() для работы с массивами
+        return $this->name . ':' . strlen($this->value) . ':' . $value;
     }
     /**
      * @return newBase
@@ -61,9 +65,14 @@ class newBase
     static public function load(string $value): newBase
     {
         $arValue = explode(':', $value);
-        return (new newBase($arValue[0]))
-            ->setValue(unserialize(substr($value, strlen($arValue[0]) + 1
-                + strlen($arValue[1]) + 1), $arValue[1]));
+        /** return (new newBase($arValue[0]))
+         *      ->setValue(unserialize(substr($value, strlen($arValue[0]) + 1
+         *          + strlen($arValue[1]) + 1), $arValue[1]));      некоррекно передан аргумент
+         */
+        $obj = new newBase($arValue[0]);
+        $obj->setValue(unserialize(substr($value, strlen($arValue[0]) + 1
+            + strlen($arValue[1]) + 1, $arValue[1])));
+        return $obj;
     }
 }
 class newView extends newBase
@@ -87,11 +96,12 @@ class newView extends newBase
     }
     private function setType()
     {
-        $this->type = gettype($this->value);
+        $this->type = gettypeOfValue($this->value);
     }
     private function setSize()
     {
-        if (is_subclass_of($this->value, "Test3\newView")) {
+        // if (is_subclass_of($this->value, "Test3\newView")) {     не экранирован символ \
+        if (is_subclass_of($this->value, "Test3\\newView")) {
             $this->size = parent::getSize() + 1 + strlen($this->property);
         } elseif ($this->type == 'test') {
             $this->size = parent::getSize();
@@ -157,20 +167,26 @@ class newView extends newBase
     static public function load(string $value): newBase
     {
         $arValue = explode(':', $value);
-        return (new newBase($arValue[0]))
-            ->setValue(unserialize(substr($value, strlen($arValue[0]) + 1
-                + strlen($arValue[1]) + 1), $arValue[1]))
-            ->setProperty(unserialize(substr($value, strlen($arValue[0]) + 1
-                + strlen($arValue[1]) + 1 + $arValue[1])))
-            ;
+        /* return (new newBase($arValue[0]))
+        *    ->setValue(unserialize(substr($value, strlen($arValue[0]) + 1
+        *        + strlen($arValue[1]) + 1), $arValue[1]))                          некорректно передан аргумент
+        *    ->setProperty(unserialize(substr($value, strlen($arValue[0]) + 1       setProperty() - метод класса newView
+        *        + strlen($arValue[1]) + 1 + $arValue[1])));
+        */
+        $obj = new newView($arValue[0]);
+        $obj->setValue(unserialize(substr($value, strlen($arValue[0]) + 1 + strlen($arValue[1]) + 1, $arValue[1])));
+        $obj->setProperty(unserialize(substr($value, strlen($arValue[0]) + 1 + strlen($arValue[1]) + 1 + $arValue[1])));
+        return $obj;
     }
 }
-function gettype($value): string
+// function gettype($value): string     название метода совпадает с названием стандартного метода gettype()
+function gettypeOfValue($value): string
 {
     if (is_object($value)) {
         $type = get_class($value);
         do {
-            if (strpos($type, "Test3\newBase") !== false) {
+            // if (strpos($type, "Test3\\newBase") !== false) {     не экранирован символ \
+            if (strpos($type, "Test3\\newBase") !== false) {
                 return 'test';
             }
         } while ($type = get_parent_class($type));
@@ -192,4 +208,3 @@ $save = $obj2->getSave();
 $obj3 = newView::load($save);
 
 var_dump($obj2->getSave() == $obj3->getSave());
-
